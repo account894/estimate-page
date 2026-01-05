@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>단가 자동 매칭 시스템 (AI Pro + Performance)</title>
+    <!-- 외부 라이브러리 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Noto+Sans+KR:wght@400;700&display=swap');
+        body { font-family: 'Noto Sans KR', 'Inter', sans-serif; }
+        .log-container::-webkit-scrollbar { width: 6px; }
+        .log-container::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 3px; }
+        
+        /* 버튼 내 텍스트 가독성을 위한 그림자 */
+        .btn-text-shadow { text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-slate-800 mb-2">단가 자동 매칭 도구 v4.1 (UI Improved)</h1>
+            <p class="text-slate-600 font-medium text-indigo-600">대용량 데이터(1만행+) 지원 • 버튼 일체형 진행률 표시</p>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- 1. 설정 및 업로드 -->
+            <div class="md:col-span-1 space-y-6">
+                <!-- 파일 업로드 카드 -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-semibold mb-4 flex items-center text-slate-700">
+                        <span class="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-sm mr-2 font-bold">1</span>
+                        파일 업로드
+                    </h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">공내역 (Excel/CSV)</label>
+                            <input type="file" id="excelFile" accept=".xlsx, .xls, .csv" 
+                                class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 transition-all cursor-pointer border border-slate-200 rounded-lg p-1">
+                        </div>
+                        <div id="dbStatus" class="flex items-center text-sm text-amber-600">
+                            <svg class="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            DB 연결 중...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 실행 카드 -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-semibold mb-4 flex items-center text-slate-700">
+                        <span class="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-sm mr-2 font-bold">2</span>
+                        실행 및 저장
+                    </h2>
+                    
+                    <div class="flex flex-col gap-3">
+                        <!-- 버튼 자체가 진행률 바가 되도록 수정 -->
+                        <button onclick="startWorkerMatch()" id="matchBtn" disabled
+                            class="w-full bg-indigo-600 text-white font-semibold py-3 px-4 rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:bg-slate-300 disabled:shadow-none transition-all relative overflow-hidden btn-text-shadow border border-indigo-600">
+                            ⚡ 고속 매칭 실행
+                        </button>
+                        
+                        <button onclick="downloadExcel()" id="downloadBtn" disabled
+                            class="w-full bg-emerald-600 text-white font-semibold py-3 px-4 rounded-xl shadow-lg shadow-emerald-200 hover:bg-emerald-700 disabled:opacity-50 transition-all">
+                            엑셀 결과 저장
+                        </button>
+                    </div>
+                </div>
+
+                <!-- AI 정보 -->
+                <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                    <h4 class="text-xs font-bold text-indigo-800 uppercase mb-2">성능 최적화됨</h4>
+                    <p class="text-xs text-indigo-700 leading-relaxed">
+                        4,000행 이상의 데이터 처리를 위해 <b>웹 워커(Web Worker)</b> 기술이 적용되었습니다. 
+                        화면 멈춤 없이 대용량 데이터를 고속으로 분석합니다.
+                    </p>
+                </div>
+            </div>
+
+            <!-- 2. 로그 섹션 -->
+            <div class="md:col-span-2 space-y-4">
+                <div class="bg-slate-900 rounded-2xl p-6 shadow-xl flex flex-col h-[600px]">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-slate-200 font-semibold flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            시스템 로그
+                        </h2>
+                        <button onclick="clearLog()" class="text-xs text-slate-400 hover:text-white uppercase tracking-wider">Clear</button>
+                    </div>
+                    <div id="log" class="log-container flex-1 text-[13px] font-mono text-green-400 overflow-y-auto whitespace-pre-wrap leading-relaxed"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 커스텀 알림 모달 -->
+    <div id="modal" class="fixed inset-0 bg-black/60 hidden items-center justify-center z-50">
+        <div class="bg-white p-8 rounded-2xl max-w-sm w-full mx-4 shadow-2xl border border-slate-100">
+            <h3 id="modalTitle" class="text-xl font-bold mb-2 text-slate-800">알림</h3>
+            <p id="modalMsg" class="text-slate-600 mb-6 leading-relaxed"></p>
+            <button onclick="closeModal()" class="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition-colors">확인</button>
+        </div>
+    </div>
+
+    <!-- ==============================================
+         Web Worker 스크립트 (백그라운드 처리용)
+         ============================================== -->
+    <script id="worker-script" type="javascript/worker">
+        // 1. AI 지식 정의 (Worker 내부용)
+        const SYNONYM_MAP = {
+            "PIPE": "파이프", "관": "파이프", "SPP": "강관", "CARBON STEEL": "강관", "흑관": "강관", "백관": "강관",
+            "SUS": "STS", "STAINLESS": "STS", "스텐": "STS", "스테인리스": "STS",
+            "PVC": "PVC", "VG1": "PVC", "VG2": "PVC", "COPPER": "동관", "동파이프": "동관",
+            "PB": "PB", "에이콘": "PB", "폴리부틸렌": "PB", "CPVC": "CPVC", "소방용합성수지": "CPVC",
+            "PE": "PE", "P.E": "PE", "HDPE": "PE", "SR": "SR", "S.R": "SR",
+            "FITTING": "이음쇠", "부속": "이음쇠", "ELBOW": "엘보", "L": "엘보", "ELL": "엘보",
+            "TEE": "티", "T": "티", "REDUCER": "레듀샤", "RED": "레듀샤", "R": "레듀샤", "이경소켓": "레듀샤",
+            "SOCKET": "소켓", "SOC": "소켓", "S": "소켓", "COUPLING": "소켓",
+            "CAP": "캡", "마개": "캡", "FLANGE": "플랜지", "FLG": "플랜지", "F": "플랜지",
+            "UNION": "유니온", "UN": "유니온", "U": "유니온", "NIPPLE": "니플", "N": "니플",
+            "BUSHING": "부싱", "BUSH": "부싱", "ADAPTER": "아답타", "M.A": "아답타", "F.A": "아답타", "ADPT": "아답타",
+            "CROSS": "크로스", "X": "크로스", "SADDLE": "새들", "PLUG": "플러그", "메꾸라": "플러그",
+            "VALVE": "밸브", "V/V": "밸브", "V.V": "밸브", "GATE": "게이트", "제수변": "게이트",
+            "GLOBE": "글로브", "스톱밸브": "글로브", "CHECK": "체크", "판체크": "체크", "스윙체크": "체크",
+            "HAMMERLESS": "체크", "BALL": "볼", "볼밸브": "볼", "BUTTERFLY": "버터플라이", "B.F": "버터플라이",
+            "BFV": "버터플라이", "STRAINER": "스트레이너", "STR": "스트레이너", "Y-STR": "스트레이너",
+            "PRV": "감압변", "REDUCING": "감압변", "SOL": "솔레노이드", "SOLENOID": "솔레노이드",
+            "AIR VENT": "에어벤트", "A.V": "에어벤트", "통기": "에어벤트", "SAFETY": "안전변", "RELIEF": "릴리프",
+            "FLOAT": "정수위", "F.V": "정수위", "HEAD": "헤드", "SPRINKLER": "헤드", "S.P": "헤드",
+            "ALARM": "알람", "유수검지": "알람", "HYDRANT": "소화전", "O.H": "소화전",
+            "SIAMESE": "송수구", "BOX": "박스", "합": "박스", "함": "박스", "F.BOX": "소화전함",
+            "INSULATION": "보온", "LAGGING": "보온", "RUBBER": "고무발포", "아마플렉스": "고무발포",
+            "GLASS WOOL": "그라스울", "유리솜": "그라스울", "HANGER": "행가", "CLEVIS": "행가", "RING": "행가",
+            "SUPPORT": "서포트", "지지대": "서포트", "ANGLE": "앵글", "CHANNEL": "잔넬",
+            "BOLT": "볼트", "B": "볼트", "NUT": "너트", "N": "너트", "GASKET": "가스켓", "PACKING": "가스켓", "P.K": "가스켓"
+        };
+
+        const INCOMPATIBLE_GROUPS = [
+            ["STS", "스텐", "SUS"], ["강관", "SPP", "백관", "흑관"], ["PVC", "VG1", "VG2"],
+            ["동관", "COPPER"], ["PB", "에이콘"], ["CPVC"],
+            ["파이프", "관"], 
+            ["밸브", "V/V", "게이트", "글로브", "체크", "볼", "버터플라이", "스트레이너"],
+            ["엘보", "티", "레듀샤", "소켓", "캡", "유니온", "부싱", "니플", "플랜지"],
+            ["보온", "고무발포", "그라스울", "매직테이프"], ["행가", "서포트", "절연", "슈"], ["철거"]
+        ];
+
+        const synKeys = Object.keys(SYNONYM_MAP).sort((a, b) => b.length - a.length);
+        const synRegex = new RegExp(synKeys.join("|"), "gi");
+
+        function norm(v) {
+            if (!v) return "";
+            let str = v.toString().toUpperCase();
+            str = str.replace(synRegex, (matched) => SYNONYM_MAP[matched.toUpperCase()] || matched);
+            return str.replace(/[^A-Z0-9가-힣]/g, "").replace(/EA|EACH|개/g, "EA");
+        }
+
+        function isCategoryMismatch(src, tgt) {
+            for (let i = 0; i < INCOMPATIBLE_GROUPS.length; i++) {
+                const group = INCOMPATIBLE_GROUPS[i];
+                let srcHas = false;
+                let tgtHas = false;
+                for (let k = 0; k < group.length; k++) {
+                    if (src.includes(group[k])) srcHas = true;
+                    if (tgt.includes(group[k])) tgtHas = true;
+                    if (srcHas && tgtHas) break; 
+                }
+                if (srcHas !== tgtHas) return true;
+            }
+            return false;
+        }
+
+        self.onmessage = function(e) {
+            const { type, csvRows, dbRows } = e.data;
+            if (type !== 'START') return;
+
+            const total = csvRows.length;
+            const dbLen = dbRows.length;
+            const resultRows = [];
+            let conflictCount = 0;
+
+            const processedDB = dbRows.map(r => ({
+                ...r,
+                nA: norm(r.A),
+                nB: norm(r.B),
+                nC: norm(r.C)
+            }));
+
+            const CHUNK_SIZE = 100; 
+            let currentIndex = 0;
+
+            function processChunk() {
+                const endIndex = Math.min(currentIndex + CHUNK_SIZE, total);
+                
+                for (let i = currentIndex; i < endIndex; i++) {
+                    const r = csvRows[i];
+                    const rawName = String(r[0] || "").trim();
+                    const rawSpec = String(r[1] || "").trim();
+                    const rawUnit = String(r[2] || "").trim();
+                    const rawMat  = String(r[3] || "").trim();
+                    const rawLab  = String(r[4] || "").trim();
+
+                    const hasVal = (v) => v && v !== "0" && v !== "" && v !== "undefined";
+                    const alreadyHasPrice = hasVal(rawMat) || hasVal(rawLab);
+
+                    const nA = norm(rawName);
+                    const nB = norm(rawSpec);
+                    const nC = norm(rawUnit);
+
+                    let best = { score: -9999 };
+                    let second = { score: -9999 };
+                    let candidates = []; 
+
+                    for (let j = 0; j < dbLen; j++) {
+                        const db = processedDB[j];
+                        let score = 0;
+
+                        if (isCategoryMismatch(nA, db.nA)) {
+                            score = -999;
+                        } else {
+                            if (db.nA === nA) score += 50;
+                            else if (nA.length > 0 && (nA.includes(db.nA) || db.nA.includes(nA))) score += 35;
+
+                            if (db.nB === nB) score += 40;
+                            else if (nB.length > 0 && (nB.includes(db.nB) || db.nB.includes(nB))) score += 25;
+
+                            if (db.nC === nC) score += 10;
+                        }
+
+                        if (score < 40) continue; 
+
+                        const item = { ...db, score };
+                        
+                        if (score >= 95) {
+                            candidates.push(item);
+                        }
+
+                        if (score > best.score) {
+                            second = best;
+                            best = item;
+                        } else if (score > second.score) {
+                            second = item;
+                        }
+                    }
+
+                    let isConflict = false;
+                    let conflictMax = null;
+                    let conflictMin = null;
+
+                    if (candidates.length > 1) {
+                        candidates.sort((a, b) => b.totalPrice - a.totalPrice);
+                        const maxItem = candidates[0];
+                        const minItem = candidates[candidates.length - 1];
+
+                        if (maxItem.totalPrice !== minItem.totalPrice) {
+                            isConflict = true;
+                            conflictCount++;
+                            conflictMax = maxItem;
+                            conflictMin = minItem;
+                        }
+                    }
+
+                    let finalMat = rawMat;
+                    let finalLab = rawLab;
+                    let showCandidates = true;
+                    const isPerfectMatch = best.score >= 95;
+
+                    if (alreadyHasPrice) {
+                        showCandidates = false;
+                    } else if (isConflict) {
+                        finalMat = "[충돌]";
+                        finalLab = "[충돌]";
+                        showCandidates = true;
+                    } else if (isPerfectMatch) {
+                        finalMat = best.D;
+                        finalLab = best.E;
+                        showCandidates = false;
+                    }
+
+                    let c1 = {}, c2 = {};
+                    if (showCandidates) {
+                        if (isConflict && conflictMax) {
+                            c1 = { ...conflictMax, A: "[MAX] " + conflictMax.A };
+                            c2 = { ...conflictMin, A: "[MIN] " + conflictMin.A };
+                        } else {
+                            if (best.score > 0) c1 = best;
+                            if (second.score > 0) c2 = second;
+                        }
+                    }
+
+                    resultRows.push([
+                        rawName, rawSpec, rawUnit,
+                        finalMat, finalLab,
+                        c1.A || "", c1.B || "", c1.C || "", c1.D || "", c1.E || "",
+                        c2.A || "", c2.B || "", c2.C || "", c2.D || "", c2.E || ""
+                    ]);
+                }
+
+                currentIndex += CHUNK_SIZE;
+                
+                const progress = Math.min(Math.round((currentIndex / total) * 100), 100);
+                self.postMessage({ type: 'PROGRESS', percent: progress });
+
+                if (currentIndex < total) {
+                    setTimeout(processChunk, 0);
+                } else {
+                    self.postMessage({ type: 'COMPLETE', resultRows, conflictCount });
+                }
+            }
+
+            processChunk();
+        };
+    </script>
+
+    <!-- 메인 스크립트 -->
+    <script>
+        let dbRows = [];
+        let csvRows = [];
+        let worker = null;
+
+        const logEl = document.getElementById("log");
+        const matchBtn = document.getElementById("matchBtn");
+        const downloadBtn = document.getElementById("downloadBtn");
+        const dbStatus = document.getElementById("dbStatus");
+        
+        // Worker 생성
+        function initWorker() {
+            const blob = new Blob([document.getElementById('worker-script').textContent], { type: "text/javascript" });
+            worker = new Worker(window.URL.createObjectURL(blob));
+            
+            worker.onmessage = function(e) {
+                const { type, percent, resultRows: res, conflictCount } = e.data;
+
+                if (type === 'PROGRESS') {
+                    // 버튼의 배경색을 직접 조정하여 진행률 표시 (왼쪽: 에메랄드색, 오른쪽: 원래 인디고색)
+                    // linear-gradient의 % 위치를 조정하여 차오르는 효과 구현
+                    matchBtn.style.background = `linear-gradient(to right, #059669 ${percent}%, #4f46e5 ${percent}%)`;
+                    matchBtn.textContent = `⚡ 처리 중... ${percent}%`;
+                    
+                } else if (type === 'COMPLETE') {
+                    resultRows = res;
+                    addLog(`매칭 완료! (충돌 감지: ${conflictCount}건)`, 'success');
+                    
+                    // UI 복구
+                    matchBtn.disabled = false;
+                    matchBtn.style.background = ''; // Tailwind 기본값으로 복구
+                    matchBtn.textContent = '⚡ 고속 매칭 실행';
+                    
+                    downloadBtn.disabled = false;
+                    
+                    showMessage("작업 완료", `대용량 데이터 처리가 완료되었습니다.\n[충돌] ${conflictCount}건 발생.`);
+                }
+            };
+        }
+
+        function addLog(msg, type = 'info') {
+            const time = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+            let prefix = "●";
+            if(type === 'success') prefix = "✓";
+            if(type === 'error') prefix = "✗";
+            logEl.textContent += `[${time}] ${prefix} ${msg}\n`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+        function clearLog() { logEl.textContent = ""; addLog("로그 초기화."); }
+        function showMessage(title, msg) {
+            document.getElementById("modalTitle").textContent = title;
+            document.getElementById("modalMsg").textContent = msg;
+            document.getElementById("modal").classList.remove("hidden");
+            document.getElementById("modal").classList.add("flex");
+        }
+        function closeModal() {
+            document.getElementById("modal").classList.add("hidden");
+            document.getElementById("modal").classList.remove("flex");
+        }
+
+        // DB 로드
+        const DB_URL = "https://opensheet.elk.sh/1GaUzextj8jdry2iegBK7EiWDm1VASX8od3o9tP7DoZU/Sheet1";
+        async function fetchDB() {
+            try {
+                const res = await fetch(DB_URL);
+                if (!res.ok) throw new Error("네트워크 오류");
+                const data = await res.json();
+                
+                dbRows = data.map(r => ({
+                    A: r["품명"] || "",
+                    B: r["규격"] || "",
+                    C: r["단위"] || "",
+                    D: String(r["재료비"] || "0").replace(/,/g, ""),
+                    E: String(r["노무비"] || "0").replace(/,/g, ""),
+                    totalPrice: Number(String(r["재료비"] || "0").replace(/,/g, "")) + Number(String(r["노무비"] || "0").replace(/,/g, ""))
+                }));
+
+                dbStatus.innerHTML = `<span class="text-indigo-600 font-bold">✓ AI DB 준비됨 (${dbRows.length}건)</span>`;
+                addLog(`DB 로드 성공. (웹 워커 준비 완료)`, 'success');
+                if (csvRows.length > 0) matchBtn.disabled = false;
+            } catch (err) {
+                dbStatus.textContent = "DB 로드 실패";
+                addLog("DB 로드 오류: " + err.message, 'error');
+            }
+        }
+
+        // 파일 업로드
+        document.getElementById("excelFile").addEventListener("change", e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            addLog(`파일 읽기: ${file.name}`);
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                    csvRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                    addLog(`분석 완료: ${csvRows.length}행 (헤더 포함)`, 'success');
+                    if (dbRows.length > 0) matchBtn.disabled = false;
+                } catch (err) { addLog("파싱 오류: " + err.message, 'error'); }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        // 매칭 실행 (Worker 호출)
+        function startWorkerMatch() {
+            if (csvRows.length < 2) return showMessage("오류", "데이터가 부족합니다.");
+            
+            addLog("백그라운드 매칭 시작... (UI 프리징 없음)");
+            
+            // 버튼 초기화
+            matchBtn.disabled = true;
+            matchBtn.textContent = "⚡ 처리 중... 0%";
+            matchBtn.style.background = `linear-gradient(to right, #059669 0%, #4f46e5 0%)`;
+
+            // 헤더 제외하고 데이터만 전송
+            const contentRows = csvRows.slice(1);
+            
+            // Worker에 데이터 전송
+            worker.postMessage({ type: 'START', csvRows: contentRows, dbRows: dbRows });
+        }
+
+        // 엑셀 저장
+        function downloadExcel() {
+            const header = [[
+                "품명", "규격", "단위", "재료비", "노무비",
+                "후보1_품명", "후보1_규격", "후보1_단위", "후보1_재료비", "후보1_노무비",
+                "후보2_품명", "후보2_규격", "후보2_단위", "후보2_재료비", "후보2_노무비"
+            ]];
+            try {
+                const ws = XLSX.utils.aoa_to_sheet(header.concat(resultRows));
+                ws['!cols'] = Array(15).fill({wch: 16});
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "매칭결과");
+                XLSX.writeFile(wb, `단가매칭_${new Date().getTime()}.xlsx`);
+                addLog("저장 완료.", 'success');
+            } catch (err) { addLog("저장 오류: " + err.message, 'error'); }
+        }
+
+        initWorker();
+        window.onload = fetchDB;
+    </script>
+</body>
+</html>
